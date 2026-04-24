@@ -169,6 +169,47 @@ with open(enc_path, "rb") as fe, open(dec_path, "rb") as fd:
 
 
 
+if (cu.cs->slice->getPOC() == 4 && cu.lx() == 96 && cu.ly() == 224)
+{
+  printf("[ENC split] x=%d y=%d w=%d h=%d split=%d\n",
+         cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(), split);
+}
+
+
+
+
+
+printf("[ENC CU] x=%d y=%d w=%d h=%d predMode=%d skip=%d merge=%d mmvd=%d regular=%d geo=%d affine=%d\n",
+       cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(),
+       (int)cu.predMode,
+       (int)cu.skip,
+       (int)cu.mergeFlag,
+       (int)cu.mmvdMergeFlag,
+       (int)cu.regularMergeFlag,
+       (int)cu.geoFlag,
+       (int)cu.affine);
+
+
+
+
+
+
+printf("[ENC merge_idx] x=%d y=%d w=%d h=%d mergeIdx=%d numCandminus1=%d bc=%d regular=%d mmvd=%d affine=%d geo=%d ciip=%d ibc=%d bm=%d oppLic=%d\n",
+       cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(),
+       (int)cu.mergeIdx,
+       numCandminus1,
+       (int)cu.bcFlag,
+       (int)cu.regularMergeFlag,
+       (int)cu.mmvdMergeFlag,
+       (int)cu.affine,
+       (int)cu.geoFlag,
+       (int)cu.ciipFlag,
+       (int)CU::isIBC(cu),
+       (int)cu.bmMergeFlag,
+       (int)cu.oppositeLicFlag);
+
+
+
 
 
 
