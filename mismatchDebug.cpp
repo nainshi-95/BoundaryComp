@@ -93,3 +93,86 @@ void PU::appendBoundaryCompMergeCandidates(const CodingUnit& cu, MergeCtx& mrgCt
   mrgCtx.numValidMergeCand = arrayAddr;
   mrgCtx.numCandToTestEnc  = arrayAddr;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import numpy as np
+
+W, H = 1920, 1080      # 시퀀스 해상도
+bitdepth = 10          # 8 or 10
+frame_count = 100
+enc_path = "enc_recon.yuv"
+dec_path = "dec_recon.yuv"
+
+dtype = np.uint16 if bitdepth > 8 else np.uint8
+bytes_per_sample = 2 if bitdepth > 8 else 1
+
+y_size = W * H
+uv_size = (W // 2) * (H // 2)
+frame_samples = y_size + 2 * uv_size
+frame_bytes = frame_samples * bytes_per_sample
+
+with open(enc_path, "rb") as fe, open(dec_path, "rb") as fd:
+    for poc in range(frame_count):
+        enc = np.frombuffer(fe.read(frame_bytes), dtype=dtype)
+        dec = np.frombuffer(fd.read(frame_bytes), dtype=dtype)
+
+        if enc.size != frame_samples or dec.size != frame_samples:
+            print("EOF at frame", poc)
+            break
+
+        diff = enc != dec
+        if np.any(diff):
+            idx = np.flatnonzero(diff)[0]
+
+            if idx < y_size:
+                plane = "Y"
+                y = idx // W
+                x = idx % W
+                enc_val = int(enc[idx])
+                dec_val = int(dec[idx])
+            elif idx < y_size + uv_size:
+                plane = "U"
+                j = idx - y_size
+                y = j // (W // 2)
+                x = j % (W // 2)
+                enc_val = int(enc[idx])
+                dec_val = int(dec[idx])
+            else:
+                plane = "V"
+                j = idx - y_size - uv_size
+                y = j // (W // 2)
+                x = j % (W // 2)
+                enc_val = int(enc[idx])
+                dec_val = int(dec[idx])
+
+            print(f"First mismatch: POC/frame={poc}, plane={plane}, x={x}, y={y}, enc={enc_val}, dec={dec_val}")
+            break
+    else:
+        print("No mismatch")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
