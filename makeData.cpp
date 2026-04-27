@@ -176,3 +176,36 @@ for (int y = 0; y < extH; ++y)
 
 
 
+
+
+
+
+static std::vector<char> serializePatchValueU16LE(const ReconExtPatch& patch)
+{
+  const int numSamples = patch.width * patch.height;
+
+  std::vector<char> bytes(numSamples * 2);
+
+  for (int i = 0; i < numSamples; ++i)
+  {
+    const uint16_t v = patch.value[i];
+
+    // little-endian 저장
+    bytes[2 * i + 0] = static_cast<char>( v        & 0xFF);
+    bytes[2 * i + 1] = static_cast<char>((v >> 8)  & 0xFF);
+  }
+
+  return bytes;
+}
+
+
+
+
+
+
+
+
+
+
+
+
