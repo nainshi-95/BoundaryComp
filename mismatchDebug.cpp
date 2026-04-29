@@ -1,81 +1,155 @@
-static void printCuModeDebug(const char* tag, const CodingUnit& cu, int targetPoc)
+void PU::appendBoundaryCompMergeCandidates(const CodingUnit& cu, MergeCtx& mrgCtx)
 {
-  if (cu.slice->m_poc != targetPoc)
+#if BOUNDARY_COMPENSATE
+  const int orgNumMergeCand = (int)cu.cs->sps->m_maxNumMergeCand;
+  const int extraBCCand     = 5;
+  const int extNumMergeCand = orgNumMergeCand + extraBCCand;
+
+  CHECK(extNumMergeCand > MRG_MAX_NUM_CANDS, "extended merge candidate count exceeds MRG_MAX_NUM_CANDS");
+
+  int arrayAddr = mrgCtx.numValidMergeCand;
+  const int numOrigCand = std::min(arrayAddr, orgNumMergeCand);
+
+  int numAddedBCCand = 0;
+
+  for (int baseIdx = 0; baseIdx < numOrigCand; baseIdx++)
   {
-    return;
+    if (numAddedBCCand >= extraBCCand || arrayAddr >= extNumMergeCand)
+    {
+      break;
+    }
+
+    if (!isBCApplicableCandidate(mrgCtx, baseIdx))
+    {
+      continue;
+    }
+
+    mrgCtx.interDirNeighbours[arrayAddr]   = mrgCtx.interDirNeighbours[baseIdx];
+    mrgCtx.bcwIdx[arrayAddr]               = mrgCtx.bcwIdx[baseIdx];
+    mrgCtx.LICFlags[arrayAddr]             = mrgCtx.LICFlags[baseIdx];
+    mrgCtx.useAltHpelIf[arrayAddr]         = mrgCtx.useAltHpelIf[baseIdx];
+    mrgCtx.mvFieldNeighbours[arrayAddr][0] = mrgCtx.mvFieldNeighbours[baseIdx][0];
+    mrgCtx.mvFieldNeighbours[arrayAddr][1] = mrgCtx.mvFieldNeighbours[baseIdx][1];
+    mrgCtx.BCCandFlags[arrayAddr]          = true;
+
+    arrayAddr++;
+    numAddedBCCand++;
   }
 
-  if (cu.geoFlag)
+  // CABAC이 N+5까지 읽을 수 있으므로 실제 list도 항상 N+5까지 채움.
+  // 부족한 자리는 non-BC zero-like 후보로 padding.
+  while (arrayAddr < extNumMergeCand)
   {
-    printf("[%s_CU_GEO] POC=%d x=%d y=%d w=%d h=%d "
-           "splitDir=%d geoMrg0=%d geoMrg1=%d "
-           "geoMMVD0=%d geoMMVD1=%d geoMMVDIdx0=%d geoMMVDIdx1=%d "
-           "bldIdx=%d bcw=%d\n",
-           tag, cu.slice->m_poc, cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(),
-           (int)cu.geoSplitDir,
-           (int)cu.geoMergeIdx[0], (int)cu.geoMergeIdx[1],
-           (int)cu.geoMMVDFlag[0], (int)cu.geoMMVDFlag[1],
-           (int)cu.geoMMVDIdx[0], (int)cu.geoMMVDIdx[1],
-           (int)cu.geoBldIdx,
-           (int)cu.bcwIdx);
+    mrgCtx.interDirNeighbours[arrayAddr] = 1;
+    mrgCtx.bcwIdx[arrayAddr]             = BCW_DEFAULT;
+    mrgCtx.LICFlags[arrayAddr]           = false;
+    mrgCtx.useAltHpelIf[arrayAddr]       = false;
+    mrgCtx.BCCandFlags[arrayAddr]        = false;
+
+    mrgCtx.mvFieldNeighbours[arrayAddr][RPL0].setMvField(Mv(0, 0), 0);
+    mrgCtx.mvFieldNeighbours[arrayAddr][RPL1].setMvField(Mv(0, 0), NOT_VALID);
+
+    if (cu.cs->slice->isInterB())
+    {
+      mrgCtx.interDirNeighbours[arrayAddr] = 3;
+      mrgCtx.mvFieldNeighbours[arrayAddr][RPL1].setMvField(Mv(0, 0), 0);
+    }
+
+    arrayAddr++;
   }
-  else if (cu.mmvdMergeFlag || cu.mmvdSkip)
+
+  mrgCtx.numValidMergeCand = extNumMergeCand;
+  mrgCtx.numCandToTestEnc  = extNumMergeCand;
+#endif
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+static bool isBCApplicableCandidate(const MergeCtx& mrgCtx, int baseIdx)
+{
+  if (mrgCtx.BCCandFlags[baseIdx])
   {
-    printf("[%s_CU_MMVD] POC=%d x=%d y=%d w=%d h=%d "
-           "mmvdVal=%d base=%d step=%d dir=%d mmvdSkip=%d bc=%d\n",
-           tag, cu.slice->m_poc, cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(),
-           (int)cu.mmvdMergeIdx.val,
-           (int)cu.mmvdMergeIdx.pos.baseIdx,
-           (int)cu.mmvdMergeIdx.pos.step,
-           (int)cu.mmvdMergeIdx.pos.dir,
-           (int)cu.mmvdSkip,
-           (int)cu.boundaryCompensation);
+    return false;
   }
-  else if (cu.affine)
+
+  if (mrgCtx.LICFlags[baseIdx])
   {
-    printf("[%s_CU_AFFINE] POC=%d x=%d y=%d w=%d h=%d "
-           "mergeIdx=%d affineType=%d interDir=%d ref0=%d ref1=%d bc=%d\n",
-           tag, cu.slice->m_poc, cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(),
-           (int)cu.mergeIdx,
-           (int)cu.affineType,
-           (int)cu.interDir,
-           (int)cu.refIdx[0],
-           (int)cu.refIdx[1],
-           (int)cu.boundaryCompensation);
+    return false;
   }
-  else if (cu.ciipFlag)
+
+  const uint8_t interDir = mrgCtx.interDirNeighbours[baseIdx];
+
+  if (interDir != 1 && interDir != 2)
   {
-    printf("[%s_CU_CIIP] POC=%d x=%d y=%d w=%d h=%d "
-           "mergeIdx=%d ciipMode=%d bc=%d\n",
-           tag, cu.slice->m_poc, cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(),
-           (int)cu.mergeIdx,
-           (int)cu.ciipMode,
-           (int)cu.boundaryCompensation);
+    return false;
   }
-  else if (cu.regularMergeFlag)
+
+  if (interDir == 1)
   {
-    printf("[%s_CU_REG] POC=%d x=%d y=%d w=%d h=%d "
-           "mergeIdx=%d bc=%d lic=%d bm=%d oppLic=%d bcw=%d interDir=%d ref0=%d ref1=%d\n",
-           tag, cu.slice->m_poc, cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(),
-           (int)cu.mergeIdx,
-           (int)cu.boundaryCompensation,
-           (int)cu.licFlag,
-           (int)cu.bmMergeFlag,
-           (int)cu.oppositeLicFlag,
-           (int)cu.bcwIdx,
-           (int)cu.interDir,
-           (int)cu.refIdx[0],
-           (int)cu.refIdx[1]);
+    return mrgCtx.mvFieldNeighbours[baseIdx][RPL0].refIdx >= 0;
   }
   else
   {
-    printf("[%s_CU_OTHER] POC=%d x=%d y=%d w=%d h=%d "
-           "skip=%d merge=%d predMode=%d ibc=%d intra=%d\n",
-           tag, cu.slice->m_poc, cu.lx(), cu.ly(), cu.lwidth(), cu.lheight(),
-           (int)cu.skip,
-           (int)cu.mergeFlag,
-           (int)cu.predMode,
-           (int)CU::isIBC(cu),
-           (int)CU::isIntra(cu));
+    return mrgCtx.mvFieldNeighbours[baseIdx][RPL1].refIdx >= 0;
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+PU::getInterMergeCandidates(*cu, mergeCtx, 0, -1, 1);
+
+PU::getInterMMVDMergeCandidates(*cu, mergeCtx);
+
+#if BOUNDARY_COMPENSATE
+PU::appendBoundaryCompMergeCandidates(*cu, mergeCtx);
+#endif
+
+cu->regularMergeFlag = true;
+cu->mergeFlag        = true;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
