@@ -609,3 +609,89 @@ if __name__ == "__main__":
 
     print("loss:", float(loss.detach().cpu()))
     print({k: float(v.detach().cpu()) for k, v in logs.items()})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def test_dct_roundtrip(device="cuda"):
+    codec = StableDCT2QuantIDCT2STE(
+        sizes=(4, 8, 16, 32, 64),
+        bit_depth=10,
+        use_sqrt_adjustment=False,
+        use_qabs64_correction=False,
+        device=device,
+    ).to(device)
+
+    for H, W in [(4, 4), (8, 8), (16, 16), (16, 32), (32, 16), (32, 32), (64, 64)]:
+        x = torch.randn(3, 1, H, W, device=device)
+
+        c = codec.dct2(x)
+        x_rec = codec.idct2(c)
+
+        err = (x_rec - x).abs().max().item()
+        print(f"{H}x{W}: max roundtrip error = {err:.8e}")
+
+test_dct_roundtrip()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def test_dct_orthonormality(device="cuda"):
+    for N in [4, 8, 16, 32, 64]:
+        C = make_orthonormal_dct2_matrix(N, device=device)
+        I = torch.eye(N, device=device)
+
+        err1 = (C @ C.t() - I).abs().max().item()
+        err2 = (C.t() @ C - I).abs().max().item()
+
+        print(f"N={N}: C C.T err={err1:.8e}, C.T C err={err2:.8e}")
+
+test_dct_orthonormality()
+
+
+
+
+
+
+
