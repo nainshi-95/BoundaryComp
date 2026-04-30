@@ -695,3 +695,217 @@ test_dct_orthonormality()
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import math
+import os
+
+import torch
+import matplotlib.pyplot as plt
+
+
+def make_orthonormal_dct2_matrix(
+    n: int,
+    device=None,
+    dtype=torch.float32,
+) -> torch.Tensor:
+    assert n > 0 and (n & (n - 1)) == 0, f"n must be power of two, got {n}"
+
+    x = torch.arange(n, device=device, dtype=dtype).view(1, n)
+    k = torch.arange(n, device=device, dtype=dtype).view(n, 1)
+
+    mat = torch.cos(math.pi / n * (x + 0.5) * k)
+
+    mat[0, :] *= math.sqrt(1.0 / n)
+    if n > 1:
+        mat[1:, :] *= math.sqrt(2.0 / n)
+
+    return mat
+
+
+def save_dct_1d_basis_png(n=8, out_path="dct1d_basis.png", device="cpu"):
+    """
+    Save 1D orthonormal DCT-II basis vectors as a png.
+    Each row of C is one basis vector.
+    """
+    C = make_orthonormal_dct2_matrix(n, device=device).cpu()
+
+    fig, axes = plt.subplots(n, 1, figsize=(8, 1.2 * n))
+    if n == 1:
+        axes = [axes]
+
+    x = list(range(n))
+    for k in range(n):
+        ax = axes[k]
+        ax.plot(x, C[k].numpy())
+        ax.set_title(f"1D DCT basis k={k}")
+        ax.set_xlim(0, n - 1)
+        ax.grid(True)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"saved: {out_path}")
+
+
+def save_dct_2d_basis_png(n=8, out_path="dct2d_basis.png", device="cpu"):
+    """
+    Save 2D separable DCT basis images as a png.
+    2D basis(u,v) = outer(C[u], C[v]).
+    """
+    C = make_orthonormal_dct2_matrix(n, device=device).cpu()
+
+    # Build all 2D basis images
+    basis_list = []
+    for u in range(n):
+        row = []
+        for v in range(n):
+            basis = torch.outer(C[u], C[v])   # [n, n]
+            row.append(basis)
+        basis_list.append(row)
+
+    # Use shared color range for easier visual comparison
+    max_abs = max(b.abs().max().item() for row in basis_list for b in row)
+
+    fig, axes = plt.subplots(n, n, figsize=(2.0 * n, 2.0 * n))
+    if n == 1:
+        axes = [[axes]]
+
+    for u in range(n):
+        for v in range(n):
+            ax = axes[u][v]
+            ax.imshow(
+                basis_list[u][v].numpy(),
+                cmap="gray",
+                vmin=-max_abs,
+                vmax=max_abs,
+                interpolation="nearest",
+            )
+            ax.set_title(f"({u},{v})", fontsize=8)
+            ax.axis("off")
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"saved: {out_path}")
+
+
+def save_dct_basis_demo(n=8, out_dir="dct_basis_vis", device="cpu"):
+    os.makedirs(out_dir, exist_ok=True)
+
+    save_dct_1d_basis_png(
+        n=n,
+        out_path=os.path.join(out_dir, f"dct1d_basis_{n}.png"),
+        device=device,
+    )
+
+    save_dct_2d_basis_png(
+        n=n,
+        out_path=os.path.join(out_dir, f"dct2d_basis_{n}.png"),
+        device=device,
+    )
+
+
+if __name__ == "__main__":
+    save_dct_basis_demo(n=8, out_dir="dct_basis_vis", device="cpu")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import torch
+
+
+def test_dct2_on_basis(codec, n=8, device="cpu", atol=1e-4):
+    """
+    For each 2D basis image B(u,v) = outer(C[u], C[v]),
+    check whether codec.dct2(B) produces a one-hot coefficient map.
+    """
+    C = make_orthonormal_dct2_matrix(n, device=device)
+
+    max_offdiag = 0.0
+    max_diag_err = 0.0
+
+    for u in range(n):
+        for v in range(n):
+            basis = torch.outer(C[u], C[v]).view(1, 1, n, n)   # [1,1,n,n]
+
+            coeff = codec.dct2(basis)  # [1,1,n,n]
+            coeff2d = coeff[0, 0]
+
+            expected = torch.zeros_like(coeff2d)
+            expected[u, v] = 1.0
+
+            diff = (coeff2d - expected).abs()
+            diag_err = abs(coeff2d[u, v].item() - 1.0)
+
+            offdiag_mask = torch.ones_like(coeff2d, dtype=torch.bool)
+            offdiag_mask[u, v] = False
+            offdiag_err = diff[offdiag_mask].max().item()
+
+            max_diag_err = max(max_diag_err, diag_err)
+            max_offdiag = max(max_offdiag, offdiag_err)
+
+            print(
+                f"basis ({u},{v}) -> peak={coeff2d[u,v].item():.8f}, "
+                f"diag_err={diag_err:.3e}, offdiag_max={offdiag_err:.3e}"
+            )
+
+    print("=" * 60)
+    print(f"max diag err   : {max_diag_err:.8e}")
+    print(f"max offdiag err: {max_offdiag:.8e}")
+
+    if max_diag_err < atol and max_offdiag < atol:
+        print("PASS: DCT basis test looks correct.")
+    else:
+        print("WARNING: errors are larger than tolerance. Check dct2/idct2.")
+
+
+# example
+if __name__ == "__main__":
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    codec = StableDCT2QuantIDCT2STE(
+        sizes=(4, 8, 16, 32, 64),
+        bit_depth=10,
+        use_sqrt_adjustment=False,
+        use_qabs64_correction=False,
+        device=device,
+    ).to(device)
+
+    test_dct2_on_basis(codec, n=8, device=device, atol=1e-4)
+
+
+
+
+
+
+
+
+
+
