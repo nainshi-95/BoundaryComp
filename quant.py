@@ -909,3 +909,101 @@ if __name__ == "__main__":
 
 
 
+
+
+def ste_round(x: torch.Tensor) -> torch.Tensor:
+    return x + (torch.round(x) - x).detach()
+
+
+def ste_round_with_jitter(
+    x: torch.Tensor,
+    threshold_jitter: float = 0.0,
+    training: bool = True,
+) -> torch.Tensor:
+    """
+    x = coeff / qstep
+
+    Forward:
+        round(x + noise)
+    Backward:
+        identity gradient w.r.t. x
+    """
+    if training and threshold_jitter > 0.0:
+        noise = torch.empty_like(x).uniform_(-threshold_jitter, threshold_jitter)
+        x_forward = x + noise
+    else:
+        x_forward = x
+
+    q_hat = torch.round(x_forward)
+    return x + (q_hat - x).detach()
+
+
+def jitter_qstep(
+    qstep: torch.Tensor,
+    coeff: torch.Tensor,
+    block_jitter_range=None,
+    coeff_jitter_range=None,
+    training: bool = True,
+) -> torch.Tensor:
+    """
+    qstep: [B,1,1,1]
+    coeff: [B,C,H,W]
+    """
+    if not training:
+        return qstep
+
+    out = qstep
+
+    if block_jitter_range is not None:
+        lo, hi = block_jitter_range
+        log_j = torch.empty_like(qstep).uniform_(math.log(lo), math.log(hi))
+        out = out * torch.exp(log_j)
+
+    if coeff_jitter_range is not None:
+        lo, hi = coeff_jitter_range
+        log_j = torch.empty_like(coeff).uniform_(math.log(lo), math.log(hi))
+        out = out * torch.exp(log_j)
+
+    return out
+
+
+
+
+
+
+
+coeff = self.dct2(residual_int)
+
+qstep = self.get_qstep(H, W, coeff, qp=qp)
+
+qstep = jitter_qstep(
+    qstep=qstep,
+    coeff=coeff,
+    block_jitter_range=(0.95, 1.05),
+    coeff_jitter_range=(0.98, 1.02),
+    training=self.training,
+)
+
+q_real = coeff / qstep
+
+qcoeff = ste_round_with_jitter(
+    q_real,
+    threshold_jitter=0.02,
+    training=self.training,
+)
+
+coeff_hat = qcoeff * qstep
+
+rec_residual_int = self.idct2(coeff_hat)
+
+
+
+
+
+
+
+
+
+
+
+
