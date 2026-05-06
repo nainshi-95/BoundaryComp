@@ -17,3 +17,56 @@ static inline int getFrac16( int mvVal )
 
 
 
+
+
+
+
+
+
+
+
+#include <fstream>
+#include <string>
+#include <iomanip>
+
+#include "CommonDef.h"
+#include "Buffer.h"
+
+static inline void savePelBufAsTxt(
+  const CPelBuf& pelBuf,
+  const std::string& filePath
+)
+{
+  std::ofstream ofs(filePath);
+  if (!ofs.is_open())
+  {
+    printf("[savePelBufAsTxt] Failed to open file: %s\n", filePath.c_str());
+    return;
+  }
+
+  const int w = pelBuf.width;
+  const int h = pelBuf.height;
+
+  ofs << "# width " << w << "\n";
+  ofs << "# height " << h << "\n";
+
+  for (int y = 0; y < h; ++y)
+  {
+    const Pel* row = pelBuf.buf + y * pelBuf.stride;
+
+    for (int x = 0; x < w; ++x)
+    {
+      ofs << row[x];
+
+      if (x + 1 < w)
+      {
+        ofs << " ";
+      }
+    }
+
+    ofs << "\n";
+  }
+
+  ofs.close();
+}
+
