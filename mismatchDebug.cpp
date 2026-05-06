@@ -70,3 +70,76 @@ static inline void savePelBufAsTxt(
   ofs.close();
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include <fstream>
+#include <string>
+#include <vector>
+#include <cstdio>
+#include <iomanip>
+
+static inline void saveFloatVectorAsTxt(
+  const std::vector<float>& data,
+  const int width,
+  const int height,
+  const std::string& filePath
+)
+{
+  if ((int)data.size() != width * height)
+  {
+    printf("[saveFloatVectorAsTxt] Size mismatch\n");
+    printf("data.size() = %d, width * height = %d\n",
+           (int)data.size(), width * height);
+    return;
+  }
+
+  std::ofstream ofs(filePath);
+
+  if (!ofs.is_open())
+  {
+    printf("[saveFloatVectorAsTxt] Failed to open file: %s\n",
+           filePath.c_str());
+    return;
+  }
+
+  ofs << "# width "  << width  << "\n";
+  ofs << "# height " << height << "\n";
+
+  ofs << std::fixed << std::setprecision(6);
+
+  for (int y = 0; y < height; ++y)
+  {
+    for (int x = 0; x < width; ++x)
+    {
+      const float v = data[y * width + x];
+
+      ofs << v;
+
+      if (x + 1 < width)
+      {
+        ofs << " ";
+      }
+    }
+
+    ofs << "\n";
+  }
+
+  ofs.close();
+}
